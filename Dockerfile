@@ -1,5 +1,5 @@
-# Use a lightweight Python image
-FROM python:3.9-slim
+# Use a newer, supported Python version to avoid Google API warnings
+FROM python:3.11-slim
 
 # Set working directory inside the container
 WORKDIR /app

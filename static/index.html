@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nidhi AI - Voice & Face Tracking</title>
+    
+    <!-- PixiJS & Live2D -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.3/pixi.min.js"></script>
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js"></script>
+
+    <!-- MediaPipe Face Mesh (For Face Tracking) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    
+    <style>
+        body { 
+            margin: 0; 
+            background-color: #1a1a1a; 
+            overflow: hidden; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+        }
+        canvas { display: block; }
+        
+        /* The camera input is HIDDEN as requested */
+        #input-video {
+            position: absolute;
+            top: 0; left: 0;
+            width: 320px; height: 240px;
+            opacity: 0; /* Invisible to user */
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        #ui-container {
+            position: absolute; 
+            bottom: 40px; 
+            left: 50%; 
+            transform: translateX(-50%);
+            display: flex; 
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            z-index: 10;
+            width: 90%;
+            max-width: 600px;
+        }
+        
+        #status-pill {
+            background: rgba(0, 0, 0, 0.6); 
+            color: #00ffcc; 
+            padding: 8px 16px; 
+            border-radius: 20px;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: bold;
+            border: 1px solid rgba(0, 255, 204, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        #subtitle-box {
+            background: rgba(0, 0, 0, 0.7); 
+            color: #fff; 
+            padding: 15px 25px; 
+            border-radius: 15px;
+            text-align: center; 
+            font-size: 1.2em; 
+            min-height: 24px;
+            backdrop-filter: blur(5px);
+            width: 100%;
+            transition: opacity 0.3s;
+        }
+        
+        #start-btn { 
+            padding: 15px 40px; 
+            border-radius: 30px; 
+            border: none; 
+            background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%); 
+            color: white; 
+            font-weight: bold; 
+            font-size: 1.1em;
+            cursor: pointer; 
+            box-shadow: 0 4px 15px rgba(0,210,255,0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        #start-btn:hover { transform: scale(1.05); box-shadow: 0 6px 20px rgba(0,210,255,0.6); }
+        #start-btn:active { transform: scale(0.95); }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <!-- Hidden Video Element for Tracking -->
+    <video id="input-video"></video>
+    
+    <!-- Main Canvas -->
+    <canvas id="canvas"></canvas>
+    
+    <div id="ui-container">
+        <div id="status-pill" class="hidden">Idle</div>
+        <div id="subtitle-box" class="hidden">...</div>
+        <button id="start-btn" onclick="startExperience()">Start Voice Chat</button>
+    </div>
+
+    <script>
+        // --- GLOBAL VARIABLES ---
+        let nidhiModel;
+        let faceMesh;
+        let camera;
+        let recognition;
+        let isListening = false;
+        let isSpeaking = false;
+        
+        // --- 1. PIXIJS & LIVE2D SETUP ---
+        const app = new PIXI.Application({
+            view: document.getElementById('canvas'),
+            autoStart: true,
+            resizeTo: window,
+            backgroundColor: 0x1a1a1a
+        });
+
+        (async function loadModel() {
+            try {
+                nidhiModel = await PIXI.live2d.Live2DModel.from('LiveroiD_A-Y01.model3.json');
+                app.stage.addChild(nidhiModel);
+
+                // Scale & Position
+                const scale = Math.min(innerWidth / nidhiModel.width, innerHeight / nidhiModel.height) * 0.85;
+                nidhiModel.scale.set(scale);
+                nidhiModel.x = innerWidth / 2;
+                nidhiModel.y = innerHeight / 2;
+                nidhiModel.anchor.set(0.5, 0.5);
+                
+                // Keep center on resize
+                window.onresize = () => {
+                    nidhiModel.x = innerWidth / 2;
+                    nidhiModel.y = innerHeight / 2;
+                };
+            } catch (error) {
+                console.error("Model Load Error:", error);
+                document.getElementById('subtitle-box').innerText = "Error loading model file.";
+                document.getElementById('subtitle-box').classList.remove('hidden');
+            }
+        })();
+
+
+        // --- 2. FACIAL TRACKING (MediaPipe) ---
+        function onResults(results) {
+            if (!nidhiModel || !nidhiModel.internalModel) return;
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const landmarks = results.multiFaceLandmarks[0];
+                
+                // Calculate rough head rotation based on face landmarks
+                // Nose tip: 1, Left Ear: 234, Right Ear: 454
+                const nose = landmarks[1];
+                const leftEar = landmarks[234];
+                const rightEar = landmarks[454];
+                const topHead = landmarks[10];
+                const chin = landmarks[152];
+
+                // Yaw (Left/Right): Ratio of nose position between ears
+                const distL = Math.abs(nose.x - leftEar.x);
+                const distR = Math.abs(nose.x - rightEar.x);
+                // Map -1 (Right) to 1 (Left) roughly
+                let yaw = (distL - distR) / (distL + distR) * 2.0; 
+
+                // Pitch (Up/Down): Ratio of nose height relative to face height
+                const faceHeight = Math.abs(topHead.y - chin.y);
+                const noseHeight = Math.abs(nose.y - topHead.y);
+                let pitch = ((noseHeight / faceHeight) - 0.4) * 5.0; // 0.4 is roughly center
+
+                // Roll (Tilt): Difference in y between ears
+                let roll = (leftEar.y - rightEar.y) * 5.0;
+
+                // Clamp values to Live2D Standard (-30 to 30 usually)
+                const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
+                
+                // Apply to Live2D Parameters
+                const core = nidhiModel.internalModel.coreModel;
+                
+                // Smooth interpolation could be added here, but direct mapping is responsive
+                core.setParameterValueById('ParamAngleX', clamp(yaw * 30, -30, 30));
+                core.setParameterValueById('ParamAngleY', clamp(pitch * 30, -30, 30));
+                core.setParameterValueById('ParamAngleZ', clamp(roll * 30, -30, 30));
+                
+                // Eye Tracking (Follow user's head direction)
+                core.setParameterValueById('ParamEyeBallX', clamp(yaw, -1, 1));
+                core.setParameterValueById('ParamEyeBallY', clamp(pitch, -1, 1));
+            }
+        }
+
+        async function setupTracking() {
+            faceMesh = new FaceMesh({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+            }});
+            
+            faceMesh.setOptions({
+                maxNumFaces: 1,
+                refineLandmarks: true,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            
+            faceMesh.onResults(onResults);
+
+            const videoElement = document.getElementById('input-video');
+            camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await faceMesh.send({image: videoElement});
+                },
+                width: 640,
+                height: 480
+            });
+            
+            await camera.start();
+        }
+
+
+        // --- 3. VOICE CONVERSATION (Speech Recognition) ---
+        function setupVoice() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            
+            if (!SpeechRecognition) {
+                alert("Your browser does not support Voice Chat. Please use Chrome or Edge.");
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.continuous = false; // Stop after one sentence to process
+            recognition.lang = 'en-US'; 
+            recognition.interimResults = false;
+
+            recognition.onstart = () => {
+                isListening = true;
+                updateStatus("Listening...");
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                // If we are not speaking (processing response), restart listening?
+                // Actually, wait until we process logic.
+                if (!isSpeaking) {
+                   updateStatus("Thinking...");
+                }
+            };
+
+            recognition.onresult = async (event) => {
+                const transcript = event.results[0][0].transcript;
+                console.log("User said:", transcript);
+                document.getElementById('subtitle-box').innerText = `You: "${transcript}"`;
+                
+                // Send to AI
+                await processAIResponse(transcript);
+            };
+            
+            recognition.onerror = (event) => {
+                console.error("Speech Error:", event.error);
+                updateStatus("Mic Error - Click to Restart");
+                isListening = false;
+            };
+        }
+
+        async function processAIResponse(text) {
+            isSpeaking = true;
+            updateStatus("Nidhi Thinking...");
+            
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ message: text })
+                });
+                
+                const data = await res.json();
+                document.getElementById('subtitle-box').innerText = data.reply;
+                
+                // Speak response
+                speak(data.reply);
+                
+            } catch (err) {
+                console.error(err);
+                isSpeaking = false;
+                startListening(); // Retry listening
+            }
+        }
+
+        function speak(text) {
+            updateStatus("Nidhi Speaking...");
+            speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            const voices = speechSynthesis.getVoices();
+            
+            // --- Voice Selection Logic (Same as before) ---
+            const isHindi = /[\u0900-\u097F]/.test(text);
+            let selectedVoice = null;
+
+            if (isHindi) {
+                selectedVoice = voices.find(v => v.name.includes("Google Hindi") || v.name.includes("Kalpana")) 
+                             || voices.find(v => v.lang.includes("hi") && v.name.includes("Female"))
+                             || voices.find(v => v.lang.includes("hi"));
+                utterance.rate = 0.9;
+            } else {
+                selectedVoice = voices.find(v => v.name.includes("Sonia") || v.name.includes("Aria"));
+                if (!selectedVoice) selectedVoice = voices.find(v => v.name.includes("Google US English"));
+                if (!selectedVoice) selectedVoice = voices.find(v => v.name.includes("Female") && v.lang.includes("en"));
+                utterance.rate = 1.0;
+            }
+
+            if (selectedVoice) utterance.voice = selectedVoice;
+            utterance.pitch = 1.1;
+
+            // Lip Sync Loop
+            let talkingInterval = setInterval(() => {
+                if (nidhiModel && nidhiModel.internalModel) {
+                    nidhiModel.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', Math.random());
+                }
+            }, 100);
+
+            utterance.onend = () => {
+                clearInterval(talkingInterval);
+                if (nidhiModel) nidhiModel.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0);
+                
+                isSpeaking = false;
+                startListening(); // Loop back to listening
+            };
+
+            speechSynthesis.speak(utterance);
+        }
+
+        function startListening() {
+            if (!isListening && !isSpeaking) {
+                try {
+                    recognition.start();
+                } catch (e) {
+                    console.log("Recognition already started or error:", e);
+                }
+            }
+        }
+
+        function updateStatus(text) {
+            const el = document.getElementById('status-pill');
+            el.innerText = text;
+            if (text.includes("Listening")) el.style.color = "#00ffcc";
+            else if (text.includes("Thinking")) el.style.color = "#ffcc00";
+            else if (text.includes("Speaking")) el.style.color = "#ff66cc";
+        }
+
+
+        // --- 4. START EXPERIENCE ---
+        async function startExperience() {
+            document.getElementById('start-btn').classList.add('hidden');
+            document.getElementById('status-pill').classList.remove('hidden');
+            document.getElementById('subtitle-box').classList.remove('hidden');
+
+            // 1. Start Camera & Face Tracking
+            await setupTracking();
+            
+            // 2. Start Voice
+            setupVoice();
+            startListening();
+        }
+
+        // --- UTILS ---
+        // Ensure voices are loaded
+        window.speechSynthesis.onvoiceschanged = () => {
+            console.log("Voices loaded");
+        };
+    </script>
+</body>
+</html>

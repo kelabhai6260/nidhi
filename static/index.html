@@ -8,13 +8,13 @@
     <!-- 1. PixiJS (v7) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.3/pixi.min.js"></script>
     
-    <!-- 2. Cubism 2 Runtime (Required by the plugin for compatibility) -->
+    <!-- 2. Cubism 2.1 Runtime (CRITICAL FIX: Solves the 'Could not find Cubism 2 runtime' error) -->
     <script src="https://cdn.jsdelivr.net/gh/dazzal/pixi-live2d-display/dist/live2d.min.js"></script>
     
     <!-- 3. Cubism 4 Core (Required for your Model3.json) -->
     <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
     
-    <!-- 4. Pixi Live2D Display Plugin -->
+    <!-- 4. Pixi Live2D Display Plugin (Loads after the Runtimes) -->
     <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.min.js"></script>
 
     <!-- 5. MediaPipe Face Mesh (For Tracking) -->
@@ -80,36 +80,37 @@
             backgroundColor: 0x1a1a1a
         });
 
-        // Helper to wait for global variables
-        function waitForPIXILive2D() {
-            return new Promise((resolve, reject) => {
-                let attempts = 0;
-                const interval = setInterval(() => {
-                    attempts++;
-                    if (window.PIXI && PIXI.live2d && PIXI.live2d.Live2DModel) {
-                        clearInterval(interval);
-                        resolve();
-                    } else if (attempts > 50) {
-                        clearInterval(interval);
-                        reject(new Error("PIXI.live2d failed to initialize. Check if scripts are blocked."));
-                    }
-                }, 100);
-            });
+        /**
+         * Enhanced check for PIXI Live2D registration.
+         * Ensures all layers of the library are ready before we attempt to load the model.
+         */
+        async function waitForLive2D() {
+            let attempts = 0;
+            while (attempts < 100) {
+                // Check for both the PIXI object AND the live2d plugin extension
+                if (window.PIXI && PIXI.live2d && PIXI.live2d.Live2DModel) {
+                    console.log("Live2D Libraries detected and ready.");
+                    return true;
+                }
+                attempts++;
+                await new Promise(r => setTimeout(r, 100));
+            }
+            throw new Error("Live2D Runtime (Cubism) or Pixi Plugin failed to initialize. Check if external scripts are blocked or slow.");
         }
 
         // Robust Model Loading
         (async function load() {
             try {
-                await waitForPIXILive2D();
+                await waitForLive2D();
 
-                console.log("Attempting to load: LiveroiD_A-Y01.model3.json");
+                console.log("Loading Model: LiveroiD_A-Y01.model3.json");
                 
-                // Load Model
+                // Load the model from the static directory
                 nidhiModel = await PIXI.live2d.Live2DModel.from('LiveroiD_A-Y01.model3.json');
                 
                 app.stage.addChild(nidhiModel);
 
-                // Initial Scaling
+                // Positioning and Scaling logic
                 const scale = Math.min(innerWidth / nidhiModel.width, innerHeight / nidhiModel.height) * 0.85;
                 nidhiModel.scale.set(scale);
                 nidhiModel.x = innerWidth / 2;
@@ -117,8 +118,10 @@
                 nidhiModel.anchor.set(0.5, 0.5);
                 
                 window.onresize = () => {
-                    nidhiModel.x = innerWidth / 2;
-                    nidhiModel.y = innerHeight / 2;
+                    if (nidhiModel) {
+                        nidhiModel.x = innerWidth / 2;
+                        nidhiModel.y = innerHeight / 2;
+                    }
                 };
 
                 console.log("Nidhi Model successfully loaded!");
@@ -127,11 +130,11 @@
                 console.error("Critical Model Error:", error);
                 const errBox = document.getElementById('error-msg');
                 errBox.style.display = 'block';
-                errBox.innerHTML = `<strong>Model Error:</strong> ${error.message}<br><small>Make sure all files listed in your model3.json are in the same directory.</small>`;
+                errBox.innerHTML = `<strong>Error:</strong> ${error.message}<br><small>Ensure 'LiveroiD_A-Y01.model3.json' and textures are correctly uploaded to the 'static' folder.</small>`;
             }
         })();
 
-        // Head/Eye Tracking Handler
+        // Face Tracking Results Handler
         function onResults(results) {
             if (!nidhiModel || !nidhiModel.internalModel || !results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
             
@@ -142,24 +145,30 @@
             const top = landmarks[10];
             const chin = landmarks[152];
 
+            // Head rotation mapping based on face mesh landmarks
             const yaw = ((Math.abs(nose.x - leftEar.x) - Math.abs(nose.x - rightEar.x)) / 0.1) * 15;
             const pitch = ((Math.abs(nose.y - top.y) / Math.abs(top.y - chin.y)) - 0.4) * 100;
             const roll = (leftEar.y - rightEar.y) * 150;
 
             const core = nidhiModel.internalModel.coreModel;
+            // Update head angle parameters
             core.setParameterValueById('ParamAngleX', yaw);
             core.setParameterValueById('ParamAngleY', pitch);
             core.setParameterValueById('ParamAngleZ', roll);
+            
+            // Sync eyeballs with head direction for natural look
             core.setParameterValueById('ParamEyeBallX', yaw / 30);
             core.setParameterValueById('ParamEyeBallY', pitch / 30);
         }
 
         async function initApp() {
+            // Remove start button and show UI
             document.getElementById('start-btn').classList.add('hidden');
             document.getElementById('status-indicator').classList.remove('hidden');
             document.getElementById('subtitle').classList.remove('hidden');
 
             try {
+                // Initialize FaceMesh Tracking (MediaPipe)
                 faceMesh = new FaceMesh({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
                 faceMesh.setOptions({maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5});
                 faceMesh.onResults(onResults);
@@ -170,18 +179,22 @@
                 });
                 await camera.start();
                 
+                // Initialize Voice Loop
                 setupVoice();
 
             } catch (e) {
                 const errBox = document.getElementById('error-msg');
                 errBox.style.display = 'block';
-                errBox.innerText = "Camera/FaceMesh Error: " + e.message;
+                errBox.innerText = "Camera/Tracking Error: " + e.message;
             }
         }
 
         function setupVoice() {
             const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!Speech) return;
+            if (!Speech) {
+                alert("Speech recognition not supported in this browser. Please use Chrome.");
+                return;
+            }
             
             recognition = new Speech();
             recognition.lang = 'en-US'; 
@@ -228,6 +241,7 @@
                 document.getElementById('subtitle').innerText = data.reply;
                 speak(data.reply);
             } catch (err) {
+                console.error("Gemini API Error:", err);
                 isSpeaking = false;
                 recognition.start();
             }
@@ -239,6 +253,7 @@
             const voices = speechSynthesis.getVoices();
             const isHindi = /[\u0900-\u097F]/.test(text);
 
+            // Prioritize Female Voices as requested (Sonia/Aria/Hindi Natural)
             let v = voices.find(v => v.name.includes("Sonia") || v.name.includes("Aria"));
             if (isHindi) v = voices.find(v => v.lang.includes("hi") && v.name.includes("Female")) || voices.find(v => v.lang.includes("hi"));
             if (!v) v = voices.find(v => v.name.includes("Female") && v.lang.includes("en"));
@@ -246,6 +261,7 @@
             if (v) utterance.voice = v;
             utterance.pitch = 1.1;
             
+            // Lip Sync Manual Animation Loop
             let sync = setInterval(() => {
                 if(nidhiModel && nidhiModel.internalModel) {
                     nidhiModel.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', Math.random());

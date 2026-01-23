@@ -19,7 +19,7 @@ chat_session = None
 if API_KEY:
     try:
         genai.configure(api_key=API_KEY)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash-lite")
         
         # System Instruction for Voice Conversation
         chat_session = model.start_chat(history=[

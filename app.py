@@ -21,64 +21,50 @@ if API_KEY:
         genai.configure(api_key=API_KEY)
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        # Nidhi's System Instruction
-        # Optimized for VOICE conversation (short, conversational)
+        # System Instruction for Voice Conversation
         chat_session = model.start_chat(history=[
             {
                 "role": "user", 
-                "parts": "You are Nidhi, a friendly, cute anime AI companion. We are having a voice conversation. You are helpful, cheerful, and speak in a casual, warm way. Keep your answers short (1-2 sentences maximum) so the conversation flows naturally."
+                "parts": "You are Nidhi, a friendly, cute anime AI companion. We are having a voice conversation. You are helpful, cheerful, and speak in a casual, warm way. Keep your answers very short (1-2 sentences maximum) for natural flow."
             },
             {
                 "role": "model", 
-                "parts": "Got it! I'm listening. What's up?"
+                "parts": "Understood! I'm Nidhi. I'm listening. What's on your mind?"
             }
         ])
         logger.info("Gemini AI successfully configured.")
     except Exception as e:
         logger.error(f"Failed to configure Gemini AI: {e}")
 else:
-    logger.warning("GEMINI_API_KEY not found in environment variables. Chat will not function.")
+    logger.warning("GEMINI_API_KEY not found in environment variables.")
 
 @app.route('/')
 def home():
-    """Serve the main page."""
     return send_from_directory('static', 'index.html')
 
 @app.route('/<path:path>')
 def static_files(path):
-    """Serve static files (Live2D models, textures, etc.)"""
     return send_from_directory('static', path)
 
 @app.route('/api/chat', methods=['POST'])
 def chat_endpoint():
-    """Handle chat messages from the frontend."""
     global chat_session
-    
     if not API_KEY or not chat_session:
-        return jsonify({"reply": "Error: My brain is missing! (API Key not set correctly)"}), 500
+        return jsonify({"reply": "Error: API Key not set."}), 500
         
     data = request.json
     user_message = data.get("message", "")
     
     if not user_message:
-        return jsonify({"reply": "I didn't hear anything!"}), 400
+        return jsonify({"reply": "I'm listening..."}), 400
     
     try:
-        # Send message to Gemini
         response = chat_session.send_message(user_message)
-        bot_reply = response.text
-        return jsonify({"reply": bot_reply})
-        
+        return jsonify({"reply": response.text})
     except Exception as e:
-        logger.error(f"Error during chat generation: {e}")
+        logger.error(f"Chat error: {e}")
         return jsonify({"reply": "Sorry, I had a little glitch. Can you say that again?"}), 500
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Simple health check for Render."""
-    return jsonify({"status": "healthy"}), 200
-
 if __name__ == '__main__':
-    # Render provides the PORT environment variable
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)

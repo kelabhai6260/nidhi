@@ -8,13 +8,16 @@
     <!-- 1. PixiJS (v7) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.3/pixi.min.js"></script>
     
-    <!-- 2. Live2D Cubism Core (Required for Cubism 4 models like yours) -->
+    <!-- 2. Cubism 2 Runtime (Required by the plugin for compatibility) -->
+    <script src="https://cdn.jsdelivr.net/gh/dazzal/pixi-live2d-display/dist/live2d.min.js"></script>
+    
+    <!-- 3. Cubism 4 Core (Required for your Model3.json) -->
     <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
     
-    <!-- 3. Pixi Live2D Display (The bridge) -->
+    <!-- 4. Pixi Live2D Display Plugin -->
     <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.min.js"></script>
 
-    <!-- 4. MediaPipe Face Mesh -->
+    <!-- 5. MediaPipe Face Mesh (For Tracking) -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
     
@@ -48,7 +51,10 @@
             box-shadow: 0 4px 15px rgba(0,210,255,0.4);
         }
         .hidden { display: none !important; }
-        #error-msg { color: #ff5555; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 5px; display: none; }
+        #error-msg { 
+            color: #ff5555; background: rgba(0,0,0,0.85); padding: 15px; 
+            border-radius: 10px; display: none; max-width: 80vw; text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -63,7 +69,6 @@
     </div>
 
     <script>
-        // Global variables
         let nidhiModel, faceMesh, camera, recognition;
         let isSpeaking = false;
 
@@ -75,46 +80,58 @@
             backgroundColor: 0x1a1a1a
         });
 
-        // --- MODEL LOADING FIX ---
+        // Helper to wait for global variables
+        function waitForPIXILive2D() {
+            return new Promise((resolve, reject) => {
+                let attempts = 0;
+                const interval = setInterval(() => {
+                    attempts++;
+                    if (window.PIXI && PIXI.live2d && PIXI.live2d.Live2DModel) {
+                        clearInterval(interval);
+                        resolve();
+                    } else if (attempts > 50) {
+                        clearInterval(interval);
+                        reject(new Error("PIXI.live2d failed to initialize. Check if scripts are blocked."));
+                    }
+                }, 100);
+            });
+        }
+
+        // Robust Model Loading
         (async function load() {
             try {
-                // Explicitly wait for Cubism Core if needed (though script tag should handle it)
-                if (!window.Live2DCubismCore) {
-                    throw new Error("Live2D Cubism Core not loaded!");
-                }
+                await waitForPIXILive2D();
 
-                console.log("Loading Model: LiveroiD_A-Y01.model3.json");
+                console.log("Attempting to load: LiveroiD_A-Y01.model3.json");
                 
-                // Load the model
+                // Load Model
                 nidhiModel = await PIXI.live2d.Live2DModel.from('LiveroiD_A-Y01.model3.json');
                 
-                // Add to stage
                 app.stage.addChild(nidhiModel);
 
-                // Scale & Position
+                // Initial Scaling
                 const scale = Math.min(innerWidth / nidhiModel.width, innerHeight / nidhiModel.height) * 0.85;
                 nidhiModel.scale.set(scale);
                 nidhiModel.x = innerWidth / 2;
                 nidhiModel.y = innerHeight / 2;
                 nidhiModel.anchor.set(0.5, 0.5);
                 
-                // Handle resize
                 window.onresize = () => {
                     nidhiModel.x = innerWidth / 2;
                     nidhiModel.y = innerHeight / 2;
                 };
 
-                console.log("Model Loaded Successfully");
+                console.log("Nidhi Model successfully loaded!");
 
             } catch (error) {
-                console.error("Model Load Error:", error);
-                const errDiv = document.getElementById('error-msg');
-                errDiv.style.display = 'block';
-                errDiv.innerText = "Error loading model: " + error.message + ". Check console (F12) and ensure all files are in 'static' folder.";
+                console.error("Critical Model Error:", error);
+                const errBox = document.getElementById('error-msg');
+                errBox.style.display = 'block';
+                errBox.innerHTML = `<strong>Model Error:</strong> ${error.message}<br><small>Make sure all files listed in your model3.json are in the same directory.</small>`;
             }
         })();
 
-        // --- FACE TRACKING ---
+        // Head/Eye Tracking Handler
         function onResults(results) {
             if (!nidhiModel || !nidhiModel.internalModel || !results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
             
@@ -125,13 +142,11 @@
             const top = landmarks[10];
             const chin = landmarks[152];
 
-            // Simple math for head rotation
             const yaw = ((Math.abs(nose.x - leftEar.x) - Math.abs(nose.x - rightEar.x)) / 0.1) * 15;
             const pitch = ((Math.abs(nose.y - top.y) / Math.abs(top.y - chin.y)) - 0.4) * 100;
             const roll = (leftEar.y - rightEar.y) * 150;
 
             const core = nidhiModel.internalModel.coreModel;
-            // Update Parameters
             core.setParameterValueById('ParamAngleX', yaw);
             core.setParameterValueById('ParamAngleY', pitch);
             core.setParameterValueById('ParamAngleZ', roll);
@@ -145,39 +160,32 @@
             document.getElementById('subtitle').classList.remove('hidden');
 
             try {
-                // Initialize FaceMesh
                 faceMesh = new FaceMesh({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
                 faceMesh.setOptions({maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5});
                 faceMesh.onResults(onResults);
 
-                // Initialize Camera
                 camera = new Camera(document.getElementById('input-video'), {
                     onFrame: async () => { await faceMesh.send({image: document.getElementById('input-video')}); },
                     width: 640, height: 480
                 });
                 await camera.start();
                 
-                // Initialize Voice
                 setupVoice();
 
             } catch (e) {
-                console.error("Camera/FaceMesh Error:", e);
-                document.getElementById('error-msg').style.display = 'block';
-                document.getElementById('error-msg').innerText = "Camera Error: " + e.message;
+                const errBox = document.getElementById('error-msg');
+                errBox.style.display = 'block';
+                errBox.innerText = "Camera/FaceMesh Error: " + e.message;
             }
         }
 
-        // --- VOICE LOGIC ---
         function setupVoice() {
             const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!Speech) {
-                alert("Voice recognition not supported in this browser. Use Chrome.");
-                return;
-            }
+            if (!Speech) return;
             
             recognition = new Speech();
             recognition.lang = 'en-US'; 
-            recognition.continuous = false; // Stop after listening
+            recognition.continuous = false;
             
             recognition.onstart = () => {
                 if(!isSpeaking) document.getElementById('status-indicator').innerText = "LISTENING...";
@@ -190,8 +198,6 @@
             };
             
             recognition.onerror = (e) => {
-                console.log("Speech error", e);
-                // Restart if it wasn't an abort/no-speech error during speaking
                 if (!isSpeaking && e.error !== 'aborted') {
                    setTimeout(() => { try { recognition.start(); } catch(err){} }, 1000); 
                 }
@@ -208,7 +214,7 @@
 
         async function getAIResponse(text) {
             isSpeaking = true;
-            recognition.stop(); // Stop listening while processing
+            recognition.stop();
             document.getElementById('status-indicator').innerText = "THINKING...";
             
             try {
@@ -222,7 +228,6 @@
                 document.getElementById('subtitle').innerText = data.reply;
                 speak(data.reply);
             } catch (err) {
-                console.error("API Error", err);
                 isSpeaking = false;
                 recognition.start();
             }
@@ -241,7 +246,6 @@
             if (v) utterance.voice = v;
             utterance.pitch = 1.1;
             
-            // Lip Sync
             let sync = setInterval(() => {
                 if(nidhiModel && nidhiModel.internalModel) {
                     nidhiModel.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', Math.random());
@@ -251,9 +255,7 @@
             utterance.onend = () => {
                 clearInterval(sync);
                 if(nidhiModel) nidhiModel.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0);
-                
                 isSpeaking = false;
-                // Restart listening
                 try { recognition.start(); } catch(err){}
             };
             

@@ -9,31 +9,23 @@
         body { 
             margin: 0; padding: 0;
             background-color: #1a1a1a; 
-            /* Enhanced background image logic to fix rendering issues */
-            background-image: linear-gradient(rgba(0,0,0,0.1), rgba(0,0,0,0.1)), url('wallpaper.jpg');
+            background-image: linear-gradient(rgba(0,0,0,0.1), rgba(0,0,0,0.1)), url('wallpaper.png');
             background-size: cover;
             background-position: center center;
             background-repeat: no-repeat;
-            background-attachment: fixed; /* Keeps BG stable on mobile scroll */
+            background-attachment: fixed;
             overflow: hidden; 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            height: 100vh; 
-            width: 100vw;
+            height: 100vh; width: 100vw;
             cursor: pointer;
             -webkit-tap-highlight-color: transparent;
         }
 
-        canvas { 
-            display: block; 
-            position: absolute; 
-            top: 0; left: 0; 
-            z-index: 1; 
-            pointer-events: none; 
-        }
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; pointer-events: none; }
 
         #ui-overlay { 
             position: absolute; 
-            top: env(safe-area-inset-top, 25px); /* Respects notch on mobile */
+            top: env(safe-area-inset-top, 25px); 
             left: env(safe-area-inset-left, 25px); 
             z-index: 10; 
         }
@@ -47,47 +39,22 @@
             font-weight: bold; 
             border: 1px solid rgba(0,255,204,0.25); 
             backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
             text-transform: uppercase; 
             letter-spacing: 1.5px; 
             opacity: 0.9;
-            transition: opacity 0.3s ease;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
 
         #click-prompt {
-            position: absolute; 
-            top: 50%; left: 50%; 
+            position: absolute; top: 50%; left: 50%; 
             transform: translate(-50%, -50%);
-            color: white; 
-            font-size: 1.4rem; 
-            text-align: center;
-            background: rgba(0,0,0,0.6); 
-            padding: 25px 50px; 
-            border-radius: 40px;
-            backdrop-filter: blur(12px); 
-            -webkit-backdrop-filter: blur(12px);
-            z-index: 100; 
-            pointer-events: none;
-            transition: opacity 0.8s ease; 
-            border: 1px solid rgba(255,255,255,0.1);
-            width: 80%;
-            max-width: 400px;
+            color: white; font-size: 1.4rem; text-align: center;
+            background: rgba(0,0,0,0.6); padding: 25px 50px; border-radius: 40px;
+            backdrop-filter: blur(12px); z-index: 100; pointer-events: none;
+            transition: opacity 0.8s ease; border: 1px solid rgba(255,255,255,0.1);
+            width: 80%; max-width: 400px;
         }
 
         .hidden { display: none !important; }
-
-        /* Mobile specific status adjustments */
-        @media (max-width: 768px) {
-            #status-indicator {
-                font-size: 0.65rem;
-                padding: 6px 12px;
-            }
-            #click-prompt {
-                font-size: 1.1rem;
-                padding: 20px 30px;
-            }
-        }
     </style>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.2/browser/pixi.min.js"></script>
@@ -98,9 +65,7 @@
 <body>
     <canvas id="canvas"></canvas>
     <div id="click-prompt">Tap to wake up Sonia</div>
-    <div id="ui-overlay">
-        <div id="status-indicator" class="hidden"></div>
-    </div>
+    <div id="ui-overlay"><div id="status-indicator" class="hidden"></div></div>
 
     <script type="module">
         let nidhiModel, recognition;
@@ -109,9 +74,7 @@
 
         const app = new PIXI.Application({
             view: document.getElementById('canvas'),
-            autoStart: true, 
-            resizeTo: window, 
-            backgroundAlpha: 0 
+            autoStart: true, resizeTo: window, backgroundAlpha: 0 
         });
 
         const settings = {
@@ -126,18 +89,12 @@
         async function initLive2D() {
             try {
                 nidhiModel = await PIXI.live2d.Live2DModel.from('LiveroiD_A-Y01.model3.json', { autoInteract: false });
-                nidhiModel.interactive = false;
                 app.stage.addChild(nidhiModel);
 
                 const updateLayout = () => {
-                    if (!nidhiModel) return;
                     const isMobile = window.innerWidth < 768;
                     const baseScale = Math.min(window.innerWidth / nidhiModel.width, window.innerHeight / nidhiModel.height);
-                    
-                    // Responsive Zoom: More zoom on mobile to fill the screen better
-                    const zoomFactor = isMobile ? 3.2 : 1.8; 
-                    nidhiModel.scale.set(baseScale * zoomFactor); 
-                    
+                    nidhiModel.scale.set(baseScale * (isMobile ? 3.2 : 1.8)); 
                     nidhiModel.x = window.innerWidth / 2; 
                     nidhiModel.y = window.innerHeight / 2; 
                     nidhiModel.anchor.set(0.5, 0.5);
@@ -151,34 +108,28 @@
                     const core = nidhiModel.internalModel.coreModel;
                     const now = Date.now();
 
-                    const swayX = Math.sin(now / 2500) * settings.bodyX.max;
-                    core.setParameterValueById('ParamBodyAngleX', lerp(core.getParameterValueById('ParamBodyAngleX'), swayX, settings.bodyX.smooth));
-                    
-                    const breathY = Math.sin(now / 1500) * 5;
-                    core.setParameterValueById('ParamAngleY', lerp(core.getParameterValueById('ParamAngleY'), breathY, settings.angleY.smooth));
+                    core.setParameterValueById('ParamBodyAngleX', lerp(core.getParameterValueById('ParamBodyAngleX'), Math.sin(now / 2500) * settings.bodyX.max, settings.bodyX.smooth));
+                    core.setParameterValueById('ParamAngleY', lerp(core.getParameterValueById('ParamAngleY'), Math.sin(now / 1500) * 5, settings.angleY.smooth));
 
                     if (isSpeaking) {
-                        const talkValue = (Math.abs(Math.sin(now / 60)) * 0.5) + (Math.random() * 0.5);
-                        core.setParameterValueById('ParamMouthOpenY', lerp(core.getParameterValueById('ParamMouthOpenY'), talkValue, settings.mouthOpen.smooth));
+                        const v = (Math.abs(Math.sin(now / 60)) * 0.5) + (Math.random() * 0.5);
+                        core.setParameterValueById('ParamMouthOpenY', lerp(core.getParameterValueById('ParamMouthOpenY'), v, settings.mouthOpen.smooth));
                     } else {
                         core.setParameterValueById('ParamMouthOpenY', lerp(core.getParameterValueById('ParamMouthOpenY'), 0, settings.mouthOpen.smooth));
                     }
 
-                    const blinkTime = now % 4000;
-                    if (blinkTime < 150) { 
-                        core.setParameterValueById('ParamEyeLOpen', 0);
-                        core.setParameterValueById('ParamEyeROpen', 0);
+                    if (now % 4000 < 150) { 
+                        core.setParameterValueById('ParamEyeLOpen', 0); core.setParameterValueById('ParamEyeROpen', 0);
                     } else {
                         core.setParameterValueById('ParamEyeLOpen', lerp(core.getParameterValueById('ParamEyeLOpen'), 1, settings.eyeOpen.smooth));
                         core.setParameterValueById('ParamEyeROpen', lerp(core.getParameterValueById('ParamEyeROpen'), 1, settings.eyeOpen.smooth));
                     }
                 });
-
-            } catch (e) { console.error("Could not load Sonia's model."); }
+            } catch (e) { console.error(e); }
         }
 
         async function getAIResponse(text) {
-            if (recognition) recognition.stop();
+            isSpeaking = true; if (recognition) recognition.stop();
             document.getElementById('status-indicator').innerText = "THINKING...";
             try {
                 const res = await fetch('/api/chat', {
@@ -188,49 +139,26 @@
                 });
                 const data = await res.json();
                 speak(data.reply);
-            } catch (err) { 
-                isSpeaking = false; 
-                if(recognition) try { recognition.start(); } catch(e){}
-            }
+            } catch (err) { isSpeaking = false; if(recognition) try{recognition.start();}catch(e){} }
         }
 
         function speak(text) {
             const status = document.getElementById('status-indicator');
             status.innerText = "SPEAKING...";
-            
             const lowerText = text.toLowerCase();
-            let currentPitch = settings.voice.pitch;
-            let currentRate = settings.voice.rate;
+            let p = settings.voice.pitch, r = settings.voice.rate;
+            if (lowerText.includes("haha") || lowerText.includes("!")) { p = 1.3; r = 1.15; }
+            else if (lowerText.includes("sorry")) { p = 0.9; r = 0.85; }
 
-            if (lowerText.includes("haha") || lowerText.includes("happy") || lowerText.includes("!") ) {
-                currentPitch = 1.3;
-                currentRate = 1.15;
-            } else if (lowerText.includes("sorry") || lowerText.includes("sad")) {
-                currentPitch = 0.9;
-                currentRate = 0.85;
-            }
-
-            let cleanText = text.replace(/\*[^*]*\*/g, '').replace(/[^\x00-\x7F\u0900-\u097F\s]/g, '').trim();
-            
-            const utterance = new SpeechSynthesisUtterance(cleanText);
+            let clean = text.replace(/\*[^*]*\*/g, '').replace(/[^\x00-\x7F\u0900-\u097F\s]/g, '').trim();
+            const utterance = new SpeechSynthesisUtterance(clean);
             const voices = window.speechSynthesis.getVoices();
-            const isHindi = /[\u0900-\u097F]/.test(cleanText);
-            
+            const isHindi = /[\u0900-\u097F]/.test(clean);
             let v = voices.find(v => (isHindi ? v.lang.startsWith('hi') : v.name.includes("Sonia")) && v.name.includes("Natural"));
-            if (!v) v = voices.find(v => v.name.includes("Aria") && v.name.includes("Natural"));
-            if (!v) v = voices.find(v => v.name.includes("Female"));
-            
             if (v) utterance.voice = v;
-            utterance.pitch = currentPitch;
-            utterance.rate = currentRate;
-            
+            utterance.pitch = p; utterance.rate = r;
             utterance.onstart = () => { isSpeaking = true; };
-            utterance.onend = () => {
-                isSpeaking = false;
-                status.innerText = "LISTENING...";
-                try { recognition.start(); } catch(err){}
-            };
-            
+            utterance.onend = () => { isSpeaking = false; status.innerText = "LISTENING..."; try{recognition.start();}catch(e){} };
             window.speechSynthesis.speak(utterance);
         }
 
@@ -239,7 +167,6 @@
             if (!Speech) return;
             recognition = new Speech();
             recognition.continuous = true;
-            recognition.onstart = () => { if(!isSpeaking) document.getElementById('status-indicator').innerText = "LISTENING..."; };
             recognition.onresult = async (e) => {
                 const text = e.results[e.results.length - 1][0].transcript.trim();
                 await getAIResponse(text);
@@ -249,33 +176,16 @@
         }
 
         const lerp = (s, e, a) => (1 - a) * s + a * e;
-
-        // Improved Interaction for both Mouse and Touch
-        const handleInteraction = async () => {
+        const init = async () => {
             if (isInitialized) return;
-            
-            document.getElementById('click-prompt').style.opacity = "0";
-            setTimeout(() => {
-                const prompt = document.getElementById('click-prompt');
-                if (prompt) prompt.remove();
-            }, 800);
-            
-            const status = document.getElementById('status-indicator');
-            status.classList.remove('hidden');
-            status.innerText = "LISTENING...";
-            
-            await initLive2D();
-            setupVoice();
-            isInitialized = true;
+            const prompt = document.getElementById('click-prompt');
+            if (prompt) { prompt.style.opacity = "0"; setTimeout(() => prompt.remove(), 800); }
+            document.getElementById('status-indicator').classList.remove('hidden');
+            document.getElementById('status-indicator').innerText = "LISTENING...";
+            await initLive2D(); setupVoice(); isInitialized = true;
         };
-
-        document.body.addEventListener('mousedown', handleInteraction, { once: true });
-        document.body.addEventListener('touchstart', handleInteraction, { once: true });
-
-        // Ensure voices are loaded
-        if (speechSynthesis.onvoiceschanged !== undefined) {
-            speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
-        }
+        document.body.addEventListener('mousedown', init, { once: true });
+        document.body.addEventListener('touchstart', init, { once: true });
         window.speechSynthesis.getVoices();
     </script>
 </body>

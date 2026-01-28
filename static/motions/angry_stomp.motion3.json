@@ -1,0 +1,16 @@
+{
+  "Version": 3,
+  "Meta": { "Duration": 2.0, "Fps": 30.0, "Loop": false, "CurveCount": 2 },
+  "Curves": [
+    {
+      "Target": "Parameter",
+      "Id": "ParamBodyAngleX",
+      "Segments": [0, 0, 1, 0.3, 15, 0.6, -15, 0.9, 15, 1.2, -15, 2, 0]
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamAngleX",
+      "Segments": [0, 0, 1, 0.3, 10, 0.6, -10, 0.9, 10, 1.2, -10, 2, 0]
+    }
+  ]
+}

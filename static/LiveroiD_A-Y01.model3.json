@@ -1,0 +1,44 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "LiveroiD_A-Y01.moc3",
+    "Textures": ["LiveroiD_A-Y01.8192/texture_00.png"],
+    "Physics": "LiveroiD_A-Y01.physics3.json",
+    "DisplayInfo": "LiveroiD_A-Y01.cdi3.json",
+    "Expressions": [
+      { "Name": "blush", "File": "blush.exp3.json" },
+      { "Name": "browLink", "File": "browLink.exp3.json" },
+      { "Name": "cool", "File": "cool.exp3.json" },
+      { "Name": "worried", "File": "worried.exp3.json" }
+    ],
+    "Motions": {
+      "Motion": [
+        { "File": "motions/hello.motion3.json" },
+        { "File": "motions/kiss.motion3.json" },
+        { "File": "motions/dance.motion3.json" },
+        { "File": "motions/sing.motion3.json" },
+        { "File": "motions/sniff.motion3.json" },
+        { "File": "motions/nod.motion3.json" },
+        { "File": "motions/shake_head.motion3.json" },
+        { "File": "motions/laugh.motion3.json" },
+        { "File": "motions/clap.motion3.json" },
+        { "File": "motions/wave_both.motion3.json" },
+        { "File": "motions/think.motion3.json" },
+        { "File": "motions/surprised.motion3.json" },
+        { "File": "motions/shrug.motion3.json" },
+        { "File": "motions/bow.motion3.json" },
+        { "File": "motions/hop.motion3.json" },
+        { "File": "motions/angry_stomp.motion3.json" },
+        { "File": "motions/cry.motion3.json" },
+        { "File": "motions/bashful.motion3.json" },
+        { "File": "motions/point.motion3.json" },
+        { "File": "motions/sleepy.motion3.json" },
+        { "File": "motions/heart_gesture.motion3.json" }
+      ]
+    }
+  },
+  "Groups": [
+    { "Target": "Parameter", "Name": "EyeBlink", "Ids": ["ParamEyeROpen", "ParamEyeLOpen"] },
+    { "Target": "Parameter", "Name": "LipSync", "Ids": ["ParamMouthOpenY"] }
+  ]
+}

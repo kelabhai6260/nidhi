@@ -1,70 +1,56 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const app = express();
+// Render provides the PORT environment variable
 const port = process.env.PORT || 10000;
-
-// 1. Setup Gemini
-const apiKey = process.env.GEMINI_API_KEY;
-let chatSession = null;
-
-if (apiKey) {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-    // Nidhi's System Instruction
-    chatSession = model.startChat({
-        history: [
-            {
-                role: "user",
-                parts: [{ text: "You are Nidhi, a friendly, cute anime AI companion. We are having a voice conversation. You are helpful, cheerful, and speak in a casual, warm way. Keep your answers very short (1-2 sentences maximum) for natural flow." }],
-            },
-            {
-                role: "model",
-                parts: [{ text: "Understood! I'm Nidhi. I'm listening. What's on your mind?" }],
-            },
-        ],
-    });
-    console.log("Gemini AI successfully configured.");
-} else {
-    console.warn("WARNING: GEMINI_API_KEY not found in environment variables.");
-}
 
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from the 'static' directory
+// Serve all assets from the static folder
 app.use(express.static(path.join(__dirname, 'static')));
 
-// Chat API Endpoint
-app.post('/api/chat', async (req, res) => {
-    if (!chatSession) {
-        return res.status(500).json({ reply: "Error: AI not configured." });
-    }
+// Inject API Key from Environment Variables
+const apiKey = process.env.GEMINI_API_KEY || "";
 
+/**
+ * Chat API Endpoint using Gemini 1.5 Flash
+ */
+app.post('/api/chat', async (req, res) => {
     const userMessage = req.body.message;
-    if (!userMessage) {
-        return res.status(400).json({ reply: "I didn't hear anything!" });
-    }
+
+    if (!userMessage) return res.status(400).json({ error: "No message" });
+    if (!apiKey) return res.status(500).json({ error: "API Key missing in environment variables." });
+
+    const systemPrompt = "You are Sonia, a friendly anime AI companion. You are cheerful and live in a cozy room. Keep responses very short (1-2 sentences). Use actions like *waves* or *nods* sparingly.";
+
+    // Using Gemini 2.0 Flash Lite for best speed/cost ratio
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite-preview-02-05:generateContent?key=${apiKey}`;
 
     try {
-        const result = await chatSession.sendMessage(userMessage);
-        const response = await result.response;
-        const text = response.text();
-        res.json({ reply: text });
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: userMessage }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] }
+            })
+        });
+
+        const result = await response.json();
+        const replyText = result.candidates?.[0]?.content?.parts?.[0]?.text || "I'm listening!";
+        res.json({ reply: replyText });
     } catch (error) {
-        console.error("Chat Error:", error);
-        res.status(500).json({ reply: "Sorry, I had a little glitch. Can you say that again?" });
+        res.status(500).json({ error: "Service unavailable" });
     }
 });
 
-// Health check for Render
-app.get('/health', (req, res) => {
-    res.json({ status: "healthy" });
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'static', 'index.html'));
 });
 
 app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
+    console.log(`🚀 Sonia AI running on port ${port}`);
 });

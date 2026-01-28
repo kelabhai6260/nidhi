@@ -1,20 +1,21 @@
-# Use a newer, supported Python version to avoid Google API warnings
-FROM python:3.11-slim
+# Use a Node.js LTS (Long Term Support) slim image for a smaller footprint
+FROM node:20-slim
 
-# Set working directory inside the container
+# Set the working directory inside the container
 WORKDIR /app
 
-# Copy the requirements file first (for caching)
-COPY requirements.txt .
+# Copy package.json and package-lock.json (if available) to install dependencies first
+# This leverages Docker's cache layers to speed up subsequent builds
+COPY package*.json ./
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install only production dependencies
+RUN npm install --production
 
-# Copy the rest of the application code
+# Copy the rest of the application files (server.js, static folder, etc.)
 COPY . .
 
-# Expose the port Render uses
+# Expose the port that the Express server listens on (default 10000 for Render)
 EXPOSE 10000
 
-# Start the application using Gunicorn (production server)
-CMD ["gunicorn", "-b", "0.0.0.0:10000", "app:app"]
+# Define the command to run the application
+CMD ["npm", "start"]

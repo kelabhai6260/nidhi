@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sonia AI - Pro Interaction</title>
+    <title>Nidhi AI - Pro Interaction</title>
     
     <style>
         body { 
@@ -31,7 +31,7 @@
         }
 
         #status-indicator { 
-            background: rgba(0, 0, 0, 0.4); 
+            background: rgba(0, 0, 0, 0.5); 
             color: #00ffcc; 
             padding: 8px 16px; 
             border-radius: 20px; 
@@ -70,6 +70,9 @@
     <div id="ui-overlay"><div id="status-indicator" class="hidden"></div></div>
 
     <script type="module">
+        // Mobile Fix: Force high precision for shaders to prevent black textures
+        PIXI.settings.PRECISION_FRAGMENT = PIXI.PRECISION.HIGH;
+
         const motions = [
             'hello', 'kiss', 'dance', 'sing', 'sniff', 'nod', 'shake_head', 
             'laugh', 'clap', 'wave_both', 'think', 'surprised', 'shrug', 
@@ -82,7 +85,13 @@
 
         const app = new PIXI.Application({
             view: document.getElementById('canvas'),
-            autoStart: true, resizeTo: window, backgroundAlpha: 0 
+            autoStart: true, 
+            resizeTo: window, 
+            backgroundAlpha: 0,
+            antialias: true,
+            resolution: window.devicePixelRatio || 1,
+            autoDensity: true,
+            powerPreference: 'high-performance'
         });
 
         const settings = {
@@ -96,6 +105,7 @@
 
         async function initLive2D() {
             try {
+                // Load model with autoInteract off to prevent mouse tracking
                 nidhiModel = await PIXI.live2d.Live2DModel.from('LiveroiD_A-Y01.model3.json', { autoInteract: false });
                 nidhiModel.interactive = false;
                 app.stage.addChild(nidhiModel);
@@ -104,8 +114,8 @@
                     if (!nidhiModel) return;
                     const isMobile = window.innerWidth < 768;
                     const baseScale = Math.min(window.innerWidth / nidhiModel.width, window.innerHeight / nidhiModel.height);
-                    // Mobile zoom (3.2) vs PC zoom (1.8)
-                    nidhiModel.scale.set(baseScale * (isMobile ? 3.2 : 1.8)); 
+                    // Adjusted scale for mobile vs desktop centering
+                    nidhiModel.scale.set(baseScale * (isMobile ? 3.0 : 1.8)); 
                     nidhiModel.x = window.innerWidth / 2; 
                     nidhiModel.y = window.innerHeight / 2; 
                     nidhiModel.anchor.set(0.5, 0.5);
@@ -119,11 +129,11 @@
                     const core = nidhiModel.internalModel.coreModel;
                     const now = Date.now();
 
-                    // Autonomous human swaying and breathing
+                    // 1. Autonomous Human Swaying (Human-like physics)
                     core.setParameterValueById('ParamBodyAngleX', lerp(core.getParameterValueById('ParamBodyAngleX'), Math.sin(now / 2500) * settings.bodyX.max, settings.bodyX.smooth));
                     core.setParameterValueById('ParamAngleY', lerp(core.getParameterValueById('ParamAngleY'), Math.sin(now / 1500) * 5, settings.angleY.smooth));
 
-                    // Lip Sync
+                    // 2. Pro Lip Sync during speech
                     if (isSpeaking) {
                         const v = (Math.abs(Math.sin(now / 60)) * 0.5) + (Math.random() * 0.5);
                         core.setParameterValueById('ParamMouthOpenY', lerp(core.getParameterValueById('ParamMouthOpenY'), v, settings.mouthOpen.smooth));
@@ -131,8 +141,9 @@
                         core.setParameterValueById('ParamMouthOpenY', lerp(core.getParameterValueById('ParamMouthOpenY'), 0, settings.mouthOpen.smooth));
                     }
 
-                    // Natural Blinking
-                    if (now % 4000 < 150) { 
+                    // 3. Natural Blinking logic
+                    const blinkTime = now % 4000;
+                    if (blinkTime < 150) { 
                         core.setParameterValueById('ParamEyeLOpen', 0); core.setParameterValueById('ParamEyeROpen', 0);
                     } else {
                         core.setParameterValueById('ParamEyeLOpen', lerp(core.getParameterValueById('ParamEyeLOpen'), 1, settings.eyeOpen.smooth));
@@ -182,13 +193,13 @@
             const lowerText = text.toLowerCase();
             let p = settings.voice.pitch, r = settings.voice.rate;
 
-            // RESTORED: Voice Emotions
+            // RESTORED: Emotional Voice modulation
             if (lowerText.includes("haha") || lowerText.includes("happy") || lowerText.includes("yay") || lowerText.includes("!")) {
-                p = 1.3; r = 1.15; // Excited
+                p = 1.3; r = 1.15; // Higher/Faster for excitement
             } else if (lowerText.includes("sorry") || lowerText.includes("sad") || lowerText.includes("unfortunate")) {
-                p = 0.9; r = 0.85; // Sad
+                p = 0.9; r = 0.85; // Lower/Slower for sympathy
             } else if (lowerText.includes("?") || lowerText.includes("really") || lowerText.includes("wow")) {
-                p = 1.25; r = 1.05; // Curious/Surprised
+                p = 1.25; r = 1.05; // Alert for curiosity
             }
 
             let clean = text.replace(/\*[^*]*\*/g, '').replace(/[^\x00-\x7F\u0900-\u097F\s]/g, '').trim();
@@ -207,6 +218,7 @@
             utterance.onstart = () => { isSpeaking = true; };
             utterance.onend = () => { 
                 isSpeaking = false; 
+                if(nidhiModel) nidhiModel.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0);
                 status.innerText = "LISTENING..."; 
                 try{recognition.start();}catch(e){} 
             };
@@ -237,9 +249,15 @@
             await initLive2D(); setupVoice(); isInitialized = true;
         };
 
+        // Interaction listeners for mobile and desktop
         document.body.addEventListener('mousedown', init, { once: true });
         document.body.addEventListener('touchstart', init, { once: true });
+        
+        // Ensure voices are loaded for selection
         window.speechSynthesis.getVoices();
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+        }
     </script>
 </body>
 </html>
